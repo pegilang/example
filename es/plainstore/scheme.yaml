@@ -41,7 +41,7 @@ type Operation<Q,R>:
     Commit: { }
     Rollback: { }
   Pipeline:
-    .Request: [.Hold|.Error]
+    .Request: [.Hold_$1|.Error]
     .Commit_$1: [.Success]
     .Rollback_$1: []
 
@@ -67,7 +67,7 @@ UserDomain Domain<{UserId,Username,Password}>:
 StoreBookDomain Domain<{BookId,Title,Price,Count}>:
   Events:
     Define: &Event{BookId,Title}
-    AddCount: &TxEvent{BookId,Count}
+    AddCount: &TxEvent{BookId,Conut}
     SetPrice: &Event{BookId,NewPrice}
   Pipeline:
     .Define: [.Model|.Error]
@@ -90,7 +90,6 @@ MoneyDomain Domain<{UserId,Amount}>:
 # Operations
 
 BuyBookOperation Operation<{UserId,BookId},{UserId,BookId}>:
-
   Events:
     allRequest: [MoneyDomain.AddAmount, StoreBookDomain.AddCount]
     anyError: MoneyDomain.Error|StoreBookDomain.Error
