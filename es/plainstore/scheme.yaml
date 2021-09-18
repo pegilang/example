@@ -1,0 +1,128 @@
+----
+# interfaces:
+
+type Event<T>:
+  &T
+  Name: string
+  EventId: string
+  TxId: string
+  Created: Date
+
+type ModelEvent<T>:
+  &Event<{Model: &T}>
+
+type TxEvent<T>:
+  &Event<T>
+  HoldOnly: boolean
+
+type Actor:
+  Name
+  Events:
+    [name]: &Event<{Name: name}>
+    Error: {Reason}
+  Pipeline:
+    [Event.Name]: []&Event.Name
+
+type Domain<T>:
+  &Actor
+  Model: &T
+  Events:
+    Model: &ModelEvent<T>
+    Hold: {}
+    Commit: {}
+    Rollback: {}
+
+type Operation<Q,R>:
+  &Actor
+  Events:
+    Request: &TxEvent<Q>
+    Success: &ModelEvent<R>
+    Hold: { }
+    Commit: { }
+    Rollback: { }
+  Pipeline:
+    .Request: [.Hold|.Error]
+    .Commit_$1: [.Success]
+    .Rollback_$1: []
+
+type View<T>:
+  &Actor
+  Model: &T
+  Select:
+    [ModelEvent<T>.Name]: []string
+  Events:
+    Model: &ModelEvent<T>
+
+-----
+# Domains
+
+UserDomain Domain<{UserId,Username,Password}>:
+  Events:
+    Register: &Event{Username, Password}
+    ChangePassword: &Event{UserId, OldPassword, NewPassword}
+  Pipeline:
+    .Register: [.Model|.Error]
+    .ChangePassword: [.Model|.Error]
+
+StoreBookDomain Domain<{BookId,Title,Price,Count}>:
+  Events:
+    Define: &Event{BookId,Title}
+    AddCount: &TxEvent{BookId,Count}
+    SetPrice: &Event{BookId,NewPrice}
+  Pipeline:
+    .Define: [.Model|.Error]
+
+    .AddCount: [.Error|.Hold_$1]
+    .Commit_$1: [.Model]
+    .Rollback_$1: []
+
+    .SetPrice: [.Model|.Error]
+
+MoneyDomain Domain<{UserId,Amount}>:
+  Events:
+    AddAmount: &TxEvent{UserId,Amount}
+  Pipeline:
+    .AddAmount: [.Error|.Hold_$1]
+    .Commit_$1: [.Model]
+    .Rollback_$1: []
+
+-----
+# Operations
+
+BuyBookOperation Operation<{UserId,BookId},{UserId,BookId}>:
+
+  Events:
+    allRequest: [MoneyDomain.AddAmount, StoreBookDomain.AddCount]
+    anyError: MoneyDomain.Error|StoreBookDomain.Error
+    allHold: [MoneyDomain.Hold, StoreBookDomain.Hold]
+    allRollback: [MoneyDomain.Rollback, StoreBookDomain.Rollback]
+    allCommit: [MoneyDomain.Commit, StoreBookDomain.Commit]
+  Pipeline:
+    .Request:
+      - .allRequest_$1
+    .anyError_$1:
+      - .Error
+      - allRollback_$1
+    .allHold_$1:
+      - .Hold_$1
+    .Commit_$1:
+      - .Success
+      - .allCommit_$1
+    .Rollback_$1:
+      - .allRollback_$1
+
+------
+# View
+
+UserBooksView View<{UserId,Username,BookId,BookTitle,Count}>:
+  Select:
+    UserDomain.Model:
+      - UserId
+      - Username
+    StoreBookDomain.Model:
+      - BookId
+      - Title
+    BuyBookOperation.Success:
+      - UserId
+      - BookId
+
