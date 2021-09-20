@@ -1,0 +1,44 @@
+import (
+  "github.com/pegilang/core"
+  "github.com/pegipkg/git-subscribe"
+  "github.com/pegipkg/git-pull"
+  "github.com/pegipkg/linux-tool"
+  "github.com/pegipkg/git-push"
+  "github.com/pegipkg/regexp"
+)
+interface Props {
+    from core.url
+    to   core.url
+    lang core.string
+}
+props, propsErr = core.Pipeline.Props(Props)
+
+gitChange, subscribeErr := git-subscibe({
+    url: props.from,
+    match: regexp(`.proto$`),
+}).each()
+
+protoDir, pullErr := git-pull({
+    url: gitChange.url,
+})
+
+outDir  := core.fs.tmp()
+
+buildInfo, buildErr := linux-tool({
+    image: "arch",
+    install: ["protobuf"],
+    workdir: protoDir,
+    run: "protoc --${props.lang}_out ${outDir.path} `find ${protoDir.path} | grep .proto$`",
+})
+
+buildInfo | git-push({
+    to: props.to,
+    from: outDir,
+    clean: true,
+})
+
+
+compileInfo := {gitChangeNotification, pushInfo, buildInfo}
+compileErr := core.error.join(pullErr, buildErr, pushErr)
+compileStream := core.stream.from(compileInfo, compileErr)
+core.Pipeline.Return(compileStream, core.error.join(propsErr, subscribeErr))

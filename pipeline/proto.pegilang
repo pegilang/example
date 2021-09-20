@@ -1,0 +1,6 @@
+import (
+    "github.com/pegilang/example/pipeline/protobuilder/proto_build"
+    "github.com/pegilang/core"
+)
+
+proto_build({from: core.source.resolve("./"), to: core.source.resolve("./"), lang: "cpp"})
