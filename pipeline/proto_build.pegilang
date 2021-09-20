@@ -1,40 +1,46 @@
 pegilang "github.com/pegilang/scheme/v1"
 
 import (
+  "github.com/pegilang/core"
   "github.com/pegipkg/git-subscribe"
   "github.com/pegipkg/git-pull"
   "github.com/pegipkg/tool"
-  "github.com/pegipkg/tmp"
   "github.com/pegipkg/git-push"
   pathResolve "github.com/pegipkg/path/resolve"
   "github.com/pegipkg/regexp"
 )
 
-node changeEvents = git-subscibe({
+core.stream[core.message] changeEvents := git-subscibe({
     url: "./proto",
     match: regexp(`.proto$`),
 })
 
-node protoDir = git-pull({
-    url: changeEvents.url,
+core.message changeEvent := changeEvents | core.stream.each(changeEvents)
+
+core.message dirInfo, core.fs pulledDir, core.error pullErr := changeEvent | git-pull({
+    url: changeEvent.url,
 })
 
-node protoBuild = tool({
-    image: "arch",
-    package: ["protobuf"],
-    env: {
-          DIR: protoDir.path,
-          OUT: pathResolve(protoDir.path, "../cpp/"),
-    },
-    run: "/bin/bash -c",
-    input: |EOF
-      cd $DIR
-      protoc --cpp_out $OUT `find . | grep .proto$`
-    EOF,
-})
+core.message buildInfo, core.error buildErr :=
+    | dirInfo, pulledDir
+    | tool({
+        image: "arch",
+        package: ["protobuf"],
+        env: {
+              DIR: pulledDir.path,
+              OUT: pathResolve(pulledDir.path, "../cpp/"),
+        },
+        run: "/bin/bash -c",
+        input: |EOF
+          cd $DIR
+          protoc --cpp_out $OUT `find . | grep .proto$`
+        EOF,
+    })
 
-node buildedPush = git-push({
-    url: $(changeEvents.url),
-    from: protoBuild.env.OUT,
-    filter: regexp(".*.cpp$"),
-})
+core.message pushInfo, core.error pushErr :=
+    | changeEvent, buildInfo
+    | git-push({
+        url: $(changeEvent.url),
+        from: buildInfo.env.OUT,
+        filter: regexp(".*.cpp$"),
+    })
