@@ -6,7 +6,6 @@ import (
   "github.com/pegipkg/git-pull"
   "github.com/pegipkg/tool"
   "github.com/pegipkg/git-push"
-  pathResolve "github.com/pegipkg/path/resolve"
   "github.com/pegipkg/regexp"
 )
 
@@ -17,30 +16,32 @@ core.stream[core.message] changeEvents := git-subscibe({
 
 core.message changeEvent := changeEvents | core.stream.each(changeEvents)
 
-core.message dirInfo, core.fs pulledDir, core.error pullErr := changeEvent | git-pull({
+core.fs protoDir, core.error pullErr := changeEvent | git-pull({
     url: changeEvent.url,
 })
 
-core.message buildInfo, core.error buildErr :=
-    | dirInfo, pulledDir
-    | tool({
-        image: "arch",
-        package: ["protobuf"],
-        env: {
-              DIR: pulledDir.path,
-              OUT: pathResolve(pulledDir.path, "../cpp/"),
-        },
-        run: "/bin/bash -c",
-        input: |EOF
-          cd $DIR
-          protoc --cpp_out $OUT `find . | grep .proto$`
-        EOF,
-    })
+core.fs workdir := protoDir.cd("..")
+core.fs outDir := workdir.cd("./cpp/")
+core.url targetUrl = url.resolve("../cpp")
+
+core.message buildInfo, core.error buildErr := tool({
+    image: "arch",
+    install: ["protobuf"],
+    env: {
+          PROTO_DIR: protoDir.path,
+          CPP_DIR: outDir.path,
+    },
+    workdir: workdir,
+    run: "/bin/bash -c",
+    input: <<EOF
+      protoc --cpp_out $CPP_DIR `find $PROTO_DIR | grep .proto$`
+    EOF,
+})
 
 core.message pushInfo, core.error pushErr :=
-    | changeEvent, buildInfo
+    | buildInfo
     | git-push({
-        url: $(changeEvent.url),
-        from: buildInfo.env.OUT,
+        to: targetUrl,
+        from: outDir,
         filter: regexp(".*.cpp$"),
     })
