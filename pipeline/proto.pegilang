@@ -3,4 +3,6 @@ import (
     "github.com/pegilang/core"
 )
 
-proto_build({from: core.source.resolve("./"), to: core.source.resolve("./"), lang: "cpp"})
+proto_build({from: core.source.resolve("./proto"), to: core.source.resolve("./cpp"), lang: "cpp"})
+
+core.Run(this)
