@@ -9,15 +9,15 @@ import (
   "github.com/pegipkg/regexp"
 )
 
-core.stream[core.message] changeEvents := git-subscibe({
+core.stream[core.message] gitChangeNotifications := git-subscibe({
     url: "./proto",
     match: regexp(`.proto$`),
 })
 
-core.message changeEvent := changeEvents | core.stream.each(changeEvents)
+core.message gitChangeNotification := gitChangeNotifications.each()
 
-core.fs protoDir, core.error pullErr := changeEvent | git-pull({
-    url: changeEvent.url,
+core.fs protoDir, core.error pullErr := git-pull({
+    url: gitChangeNotification.url,
 })
 
 core.fs workdir := protoDir.cd("..")
