@@ -1,4 +1,4 @@
-pegilang "github.com/pegilang/scheme/v1"
+parser "github.com/pegilang/scheme/v1"
 
 import (
   "github.com/pegilang/core"
@@ -14,32 +14,34 @@ core.stream[core.message] gitChangeNotifications := git-subscibe({
     match: regexp(`.proto$`),
 })
 
-core.message gitChangeNotification := gitChangeNotifications.each()
+core.message gitChangeNotification := gitChangeNotifications | core.stream.each(gitChangeNotifications)
 
-core.fs protoDir, core.error pullErr := git-pull({
+core.fs protoDir, core.error pullErr := gitChangeNotification | git-pull({
     url: gitChangeNotification.url,
 })
 
-core.fs workdir := protoDir.cd("..")
-core.fs outDir := workdir.cd("./cpp/")
-core.url targetUrl = url.resolve("../cpp")
+core.fs workdir := protoDir | core.fs.resolve(protoDir, "..")
+core.fs outDir := workdir | core.fs.resolve(workdir, "./cpp/")
+core.url targetUrl = gitChangeNotification | core.url.resolve(gitChangeNotification.url, "../cpp")
 
-core.message buildInfo, core.error buildErr := tool({
-    image: "arch",
-    install: ["protobuf"],
-    env: {
-          PROTO_DIR: protoDir.path,
-          CPP_DIR: outDir.path,
-    },
-    workdir: workdir,
-    run: "/bin/bash -c",
-    input: <<EOF
-      protoc --cpp_out $CPP_DIR `find $PROTO_DIR | grep .proto$`
-    EOF,
-})
+core.message buildInfo, core.error buildErr :=
+    | protoDir, outDir, workdir
+    | tool({
+        image: "arch",
+        install: ["protobuf"],
+        env: {
+              PROTO_DIR: core.fs.path(protoDir),
+              CPP_DIR: core.fs.path(outDir),
+        },
+        workdir: workdir,
+        run: "/bin/bash -c",
+        input: <<EOF
+          protoc --cpp_out $CPP_DIR `find $PROTO_DIR | grep .proto$`
+        EOF,
+    })
 
 core.message pushInfo, core.error pushErr :=
-    | buildInfo
+    | buildInfo, targetUrl, outDir
     | git-push({
         to: targetUrl,
         from: outDir,
