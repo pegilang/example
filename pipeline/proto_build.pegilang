@@ -1,0 +1,39 @@
+pegilang "github.com/pegilang/scheme/v1"
+
+import (
+  "github.com/pegipkg/git-subscribe"
+  "github.com/pegipkg/git-pull"
+  "github.com/pegipkg/tool"
+  "github.com/pegipkg/tmp"
+  "github.com/pegipkg/git-push"
+  pathResolve "github.com/pegipkg/path/resolve"
+  "github.com/pegipkg/regexp"
+)
+
+node changeEvents = git-subscibe({
+    url: "./proto",
+    match: regexp(`.proto$`),
+})
+
+node protoDir = git-pull({
+    url: changeEvents.url,
+})
+
+node protoBuild = tool({
+    image: "arch",
+    package: ["protobuf"],
+    env: {
+          DIR: protoDir.path,
+          OUT: pathResolve(protoDir.path, "../cpp/"),
+    },
+    run: "/bin/bash -c",
+    input: |EOF
+      cd $DIR
+      protoc --cpp_out $OUT `find . | grep .proto$`
+    EOF,
+
+node buildedPush = git-push({
+    url: $(changeEvents.url),
+    from: protoBuild.env.OUT,
+    filter: regexp(".*.cpp$"),
+})
